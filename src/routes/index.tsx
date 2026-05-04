@@ -4,7 +4,7 @@ import { useWhisperStream } from '#/hooks/use-stream'
 export const Route = createFileRoute('/')({ component: Home })
 
 function Home() {
-  const { active, start, stop } = useWhisperStream()
+  const { active, transcript, start, stop } = useWhisperStream()
 
   const toggleSession = () => {
     if (active) {
@@ -26,6 +26,11 @@ function Home() {
           className={`w-2 h-2 rounded-full ${active ? 'bg-cyan-500 animate-pulse' : 'bg-zinc-800'}`}
         />
         {active ? 'LIVE STREAMING' : 'READY TO VOW'}
+      </div>
+
+      {/* Render the growing live transcription right here! */}
+      <div className="mt-4 p-4 min-h-24 rounded">
+        {transcript || 'Waiting for audio...'}
       </div>
 
       {/* Main Action Button (Uber Style) */}
