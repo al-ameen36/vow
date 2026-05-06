@@ -1,72 +1,101 @@
 import { useRef, useState } from 'react'
 
+type AudioSource = 'mic' | 'tab'
+
 export function useWhisperStream() {
   const [active, setActive] = useState(false)
-  const [transcript, setTranscript] = useState<string>('')
+  const [transcript, setTranscript] = useState('')
+  const [source, setSource] = useState<AudioSource>('mic')
+
   const socketRef = useRef<WebSocket | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  const start = async () => {
+  // Track finalized segments and live buffer separately
+  const segmentsRef = useRef('')
+  const bufferRef = useRef('')
+
+  const updateTranscript = () => {
+    const combined = segmentsRef.current
+      ? bufferRef.current
+        ? `${segmentsRef.current} ${bufferRef.current}`
+        : segmentsRef.current
+      : bufferRef.current
+
+    setTranscript(combined)
+  }
+
+  const getAudioStream = async (source: AudioSource) => {
+    if (source === 'mic') {
+      return navigator.mediaDevices.getUserMedia({ audio: true })
+    }
+
+    if (source === 'tab') {
+      return navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      })
+    }
+  }
+
+  const start = async (selectedSource: AudioSource = source) => {
+    // Reset both tracking refs and display
+    segmentsRef.current = ''
+    bufferRef.current = ''
     setTranscript('')
-    // 1. Establish the connection
-    const socket = new WebSocket('wss://677f-34-145-73-171.ngrok-free.app/')
+    setSource(selectedSource)
+
+    const socket = new WebSocket(import.meta.env.VITE_WHISPER_SERVER_URL)
     socketRef.current = socket
 
     socket.onopen = async () => {
-      // whisper_live expects a JSON configuration payload as the first message
       socket.send(
         JSON.stringify({
           uid: crypto.randomUUID(),
           language: 'en',
           task: 'transcribe',
           model: 'small',
-          use_vad: false, // Turned OFF VAD so Whisper is forced to transcribe raw silence/noise immediately
+          use_vad: true,
         }),
       )
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await getAudioStream(selectedSource)
+      if (!stream) return
+
       streamRef.current = stream
+
       const audioCtx = new AudioContext({ sampleRate: 16000 })
       audioCtxRef.current = audioCtx
 
-      // 2. Load the Worklet module via an inline Blob
       const workletCode = `
         class VowProcessor extends AudioWorkletProcessor {
-          process(inputs, outputs, parameters) {
+          process(inputs) {
             const input = inputs[0]
-            if (input && input.length > 0) {
-              const float32Buffer = input[0]
-              if (!float32Buffer) return true
-              // Whisper_live server expects raw Float32 arrays!
-              const float32Clone = new Float32Array(float32Buffer)
-              this.port.postMessage(float32Clone.buffer)
+            if (input && input[0]) {
+              this.port.postMessage(input[0].buffer)
             }
             return true
           }
         }
         registerProcessor('vow-processor', VowProcessor)
       `
+
       const blob = new Blob([workletCode], { type: 'application/javascript' })
-      const workletUrl = URL.createObjectURL(blob)
-      await audioCtx.audioWorklet.addModule(workletUrl)
+      const url = URL.createObjectURL(blob)
 
-      const source = audioCtx.createMediaStreamSource(stream)
-      const vowNode = new AudioWorkletNode(audioCtx, 'vow-processor')
+      await audioCtx.audioWorklet.addModule(url)
 
-      // 3. Connect to destination to prevent the browser from garbage collecting the silent node!
-      vowNode.connect(audioCtx.destination)
+      const sourceNode = audioCtx.createMediaStreamSource(stream)
+      const workletNode = new AudioWorkletNode(audioCtx, 'vow-processor')
 
-      // 4. Receive the converted Int16 data from the worklet and pipe to WebSocket
-      vowNode.port.onmessage = (event) => {
+      workletNode.port.onmessage = (event) => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(event.data)
         }
       }
 
-      source.connect(vowNode)
+      sourceNode.connect(workletNode)
 
-      // Ensure browser didn't auto-suspend the audio context
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume()
       }
@@ -74,13 +103,29 @@ export function useWhisperStream() {
       setActive(true)
     }
 
+    // ---------------- STREAMING RESPONSE ----------------
     socket.onmessage = (event) => {
-      const data = JSON.parse(event.data)
+      try {
+        const data = JSON.parse(event.data)
 
-      // Whisper-live typically sends transcribed text in a 'segments' array
-      if (data.segments && Array.isArray(data.segments)) {
-        const text = data.segments.map((seg: any) => seg.text).join('')
-        setTranscript(text)
+        // Finalized segments — WhisperLive replaces the whole segments list
+        // each time it corrects, so we always overwrite (never append).
+        // This is what produces the live self-correction effect.
+        if (data.segments?.length) {
+          segmentsRef.current = data.segments
+            .map((s: any) => s.text.trim())
+            .join(' ')
+        }
+
+        // Live buffer — the unfinalized tail of current speech.
+        // Clear it when the server sends an empty string (segment was finalized).
+        if (data.buffer_transcription !== undefined) {
+          bufferRef.current = data.buffer_transcription.trim()
+        }
+
+        updateTranscript()
+      } catch {
+        /* ignore */
       }
     }
 
@@ -88,28 +133,25 @@ export function useWhisperStream() {
   }
 
   const stop = () => {
-    if (
-      socketRef.current &&
-      socketRef.current.readyState !== WebSocket.CLOSED &&
-      socketRef.current.readyState !== WebSocket.CLOSING
-    ) {
-      socketRef.current.close()
-    }
-
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      audioCtxRef.current.close().catch(() => {})
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-    }
+    socketRef.current?.close()
+    audioCtxRef.current?.close().catch(() => {})
+    streamRef.current?.getTracks().forEach((t) => t.stop())
 
     socketRef.current = null
     audioCtxRef.current = null
     streamRef.current = null
 
+    segmentsRef.current = ''
+    bufferRef.current = ''
+
     setActive(false)
   }
 
-  return { active, transcript, start, stop }
+  return {
+    active,
+    transcript,
+    start,
+    stop,
+    source,
+  }
 }
