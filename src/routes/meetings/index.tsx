@@ -14,7 +14,9 @@ type Meeting = {
 export const Route = createFileRoute('/meetings/')({
   component: MeetingsDashboard,
   loader: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
     if (!session) {
       throw redirect({ to: '/login' })
@@ -32,8 +34,6 @@ export const Route = createFileRoute('/meetings/')({
     return { meetings: (meetings ?? []) as Meeting[] }
   },
 })
-
-
 
 function formatDisplayTime(dateString: string | null) {
   if (!dateString) return '--:--'
@@ -55,7 +55,6 @@ function MeetingsDashboard() {
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-5xl mx-auto space-y-8">
-        
         {/* Header / Navigate */}
         <div className="flex items-center justify-between pb-6 border-b border-zinc-900">
           <div>
@@ -68,7 +67,8 @@ function MeetingsDashboard() {
           </div>
           <Link
             to="/"
-            className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-sm font-medium rounded-xl transition-colors border border-zinc-800"
+            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-sm font-medium rounded-xl transition-colors border border-zinc-800"
+            style={{ color: 'black' }}
           >
             Start New Meeting
           </Link>
@@ -77,22 +77,22 @@ function MeetingsDashboard() {
         {/* Meetings Grid */}
         {meetings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center bg-zinc-950 rounded-2xl border border-zinc-900">
-             <Calendar className="w-12 h-12 text-zinc-800 mb-4" />
-             <h3 className="text-zinc-400 font-medium text-lg">No meetings yet</h3>
-             <p className="text-zinc-600 text-sm max-w-sm mt-2">
-               Once you record a meeting using the dashboard, it will appear here for historical review.
-             </p>
-             <Link
-                to="/"
-                className="mt-6 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-xl transition-colors"
-              >
-                Start Recording
-              </Link>
+            <Calendar className="w-12 h-12 text-zinc-800 mb-4" />
+            <h3 className="text-zinc-400 font-medium text-lg">
+              No meetings yet
+            </h3>
+            <p className="text-zinc-600 text-sm max-w-sm mt-2">
+              Once you record a meeting, it will appear here for historical
+              review.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {meetings.map((meeting) => {
-              const duration = getDurationMinutes(meeting.start_time, meeting.end_time)
+              const duration = getDurationMinutes(
+                meeting.start_time,
+                meeting.end_time,
+              )
 
               return (
                 <Link
@@ -105,7 +105,10 @@ function MeetingsDashboard() {
                     <div className="flex bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden shrink-0">
                       <div className="px-3 py-2 flex flex-col items-center justify-center bg-zinc-900/50 border-r border-zinc-800">
                         <span className="text-xs text-zinc-500 uppercase tracking-widest font-semibold">
-                          {new Date(meeting.created_at).toLocaleString('en-US', { month: 'short' })}
+                          {new Date(meeting.created_at).toLocaleString(
+                            'en-US',
+                            { month: 'short' },
+                          )}
                         </span>
                         <span className="text-lg font-bold text-zinc-200">
                           {new Date(meeting.created_at).getDate()}
@@ -128,7 +131,7 @@ function MeetingsDashboard() {
                     </div>
                     {duration !== null && (
                       <div className="flex items-center gap-1.5 text-zinc-600 bg-zinc-950 px-2 py-0.5 rounded-full border border-zinc-800">
-                         {duration} min
+                        {duration} min
                       </div>
                     )}
                   </div>

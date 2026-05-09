@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { supabase } from '#/lib/supabase'
+import { formatTime } from '#/lib/utils'
 type AudioSource = 'mic' | 'tab'
 
 export function useWhisperStream() {
@@ -42,72 +43,97 @@ export function useWhisperStream() {
     }
   }
 
-  const start = async (
-    selectedSource: AudioSource = source,
-    meetingId?: string,
-  ) => {
-    // -------------------------
-    // reset state
-    // -------------------------
+  const stop = useCallback(() => {
+    socketRef.current?.close()
+
+    audioCtxRef.current?.close().catch(() => {})
+
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+
+    socketRef.current = null
+    audioCtxRef.current = null
+    streamRef.current = null
 
     segmentsRef.current = ''
     bufferRef.current = ''
 
-    setTranscript('')
-    setSource(selectedSource)
+    setActive(false)
+  }, [])
 
-    // -------------------------
-    // stable session id
-    // -------------------------
-
-    const sessionId = meetingId ?? crypto.randomUUID()
-
-    // -------------------------
-    // websocket
-    // -------------------------
-
-    const socket = new WebSocket(import.meta.env.VITE_WHISPER_SERVER_URL)
-
-    socketRef.current = socket
-
-    socket.onopen = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-
-      socket.send(
-        JSON.stringify({
-          uid: sessionId,
-          meeting_id: sessionId,
-          language: 'en',
-          task: 'transcribe',
-          model: 'small',
-          use_vad: true,
-          token: session?.access_token,
-        }),
-      )
-
-      const stream = await getAudioStream(selectedSource)
-
-      if (!stream) {
-        return
-      }
-
-      streamRef.current = stream
-
+  const start = useCallback(
+    async (selectedSource: AudioSource = source, meetingId?: string) => {
       // -------------------------
-      // audio context
+      // reset state
       // -------------------------
 
-      const audioCtx = new AudioContext({
-        sampleRate: 16000,
-      })
+      segmentsRef.current = ''
+      bufferRef.current = ''
 
-      audioCtxRef.current = audioCtx
+      setTranscript('')
+      setSource(selectedSource)
 
       // -------------------------
-      // worklet
+      // stable session id
       // -------------------------
 
-      const workletCode = `
+      const sessionId = meetingId ?? crypto.randomUUID()
+
+      // -------------------------
+      // websocket
+      // -------------------------
+
+      const socket = new WebSocket(import.meta.env.VITE_WHISPER_SERVER_URL)
+
+      socketRef.current = socket
+
+      socket.onopen = async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        socket.send(
+          JSON.stringify({
+            uid: sessionId,
+            meeting_id: sessionId,
+            language: 'en',
+            task: 'transcribe',
+            model: 'small',
+            use_vad: true,
+            token: session?.access_token,
+          }),
+        )
+
+        let stream: MediaStream | undefined
+        try {
+          stream = await getAudioStream(selectedSource)
+        } catch (err) {
+          console.warn('User denied AV permissions or device unavailable:', err)
+          stop()
+          return
+        }
+
+        if (!stream) {
+          stop()
+          return
+        }
+
+        streamRef.current = stream
+
+        // -------------------------
+        // audio context
+        // -------------------------
+
+        const audioCtx = new AudioContext({
+          sampleRate: 16000,
+        })
+
+        audioCtxRef.current = audioCtx
+
+        // -------------------------
+        // worklet
+        // -------------------------
+
+        const workletCode = `
         class VowProcessor extends AudioWorkletProcessor {
           process(inputs) {
             const input = inputs[0]
@@ -126,86 +152,71 @@ export function useWhisperStream() {
         )
       `
 
-      const blob = new Blob([workletCode], {
-        type: 'application/javascript',
-      })
+        const blob = new Blob([workletCode], {
+          type: 'application/javascript',
+        })
 
-      const url = URL.createObjectURL(blob)
+        const url = URL.createObjectURL(blob)
 
-      await audioCtx.audioWorklet.addModule(url)
+        await audioCtx.audioWorklet.addModule(url)
 
-      const sourceNode = audioCtx.createMediaStreamSource(stream)
+        const sourceNode = audioCtx.createMediaStreamSource(stream)
 
-      const workletNode = new AudioWorkletNode(audioCtx, 'vow-processor')
+        const workletNode = new AudioWorkletNode(audioCtx, 'vow-processor')
 
-      workletNode.port.onmessage = (event) => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(event.data)
+        workletNode.port.onmessage = (event) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data)
+          }
+        }
+
+        sourceNode.connect(workletNode)
+
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume()
+        }
+
+        setActive(true)
+      }
+
+      // -------------------------
+      // streaming transcript
+      // -------------------------
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+
+          // finalized segments
+
+          if (data.segments?.length) {
+            segmentsRef.current = data.segments
+              .map((s: any) => `${formatTime(s.start)} - ${s.text.trim()}`)
+              .join('\n')
+          }
+
+          // live partial
+
+          if (data.buffer_transcription !== undefined) {
+            bufferRef.current = data.buffer_transcription.trim()
+          }
+
+          updateTranscript()
+        } catch {
+          // ignore malformed packets
         }
       }
 
-      sourceNode.connect(workletNode)
-
-      if (audioCtx.state === 'suspended') {
-        await audioCtx.resume()
+      socket.onerror = (err) => {
+        console.error('[WS] socket error', err)
       }
 
-      setActive(true)
-    }
-
-    // -------------------------
-    // streaming transcript
-    // -------------------------
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-
-        // finalized segments
-
-        if (data.segments?.length) {
-          segmentsRef.current = data.segments
-            .map((s: any) => s.text.trim())
-            .join(' ')
-        }
-
-        // live partial
-
-        if (data.buffer_transcription !== undefined) {
-          bufferRef.current = data.buffer_transcription.trim()
-        }
-
-        updateTranscript()
-      } catch {
-        // ignore malformed packets
+      socket.onclose = () => {
+        stop()
       }
-    }
-
-    socket.onerror = (err) => {
-      console.error('[WS] socket error', err)
-    }
-
-    socket.onclose = () => {
-      stop()
-    }
-  }
-
-  const stop = () => {
-    socketRef.current?.close()
-
-    audioCtxRef.current?.close().catch(() => {})
-
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-
-    socketRef.current = null
-    audioCtxRef.current = null
-    streamRef.current = null
-
-    segmentsRef.current = ''
-    bufferRef.current = ''
-
-    setActive(false)
-  }
+    },
+    [source, stop],
+  )
 
   return {
     active,

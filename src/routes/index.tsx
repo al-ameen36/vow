@@ -11,28 +11,10 @@ import { InsightCard } from '#/components/InsightCard'
 import { SourceSelector } from '#/components/SourceSelector'
 import { StartButton } from '#/components/StartButton'
 import { InsightFilter } from '#/components/InsightFilter'
+import { formatTime } from '#/lib/utils'
 
 export const Route = createFileRoute('/')({
   component: Home,
-
-  loader: async () => {
-    // Only load initial insights if session is instantly available
-    // We defer the redirect strictly to the component so we don't drop hash URL fragments from Auth emails
-    const { data: { session } } = await supabase.auth.getSession()
-
-    let insights: any[] = []
-    if (session) {
-      const { data } = await supabase
-        .from('insights')
-        .select()
-        .order('created_at', { ascending: false })
-      insights = data ?? []
-    }
-
-    return {
-      insights
-    }
-  },
 })
 
 type Insight = {
@@ -44,29 +26,28 @@ type Insight = {
   assigner?: string | null
   commitment?: string | null
   implication?: string | null
-  start_time?: number
-  end_time?: number
+  start_ts?: number
+  end_ts?: number
   status?: 'pending' | 'accepted' | 'rejected'
 }
 
 type FilterType = 'all' | 'flagged' | 'general'
 
-function formatTime(seconds?: number) {
-  if (seconds == null) return '--'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
 function Home() {
   const navigate = useNavigate()
   const { active, transcript, start, stop } = useWhisperStream()
-  const { insights: initialInsights } = Route.useLoaderData()
   const { user, isLoading } = useAuth()
   const [source, setSource] = useState<'mic' | 'tab'>('mic')
-  const [insights, setInsights] = useState<Insight[]>(initialInsights)
+  const [insights, setInsights] = useState<Insight[]>([])
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const meetingIdRef = useRef(crypto.randomUUID())
+
+  // Cleanup websocket when navigating away
+  useEffect(() => {
+    return () => {
+      if (active) stop()
+    }
+  }, [active, stop])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -122,15 +103,18 @@ function Home() {
     }
 
     // 1. Create the meeting historically in Supabase before connecting the sockets
-    const { error } = await supabase.from('meetings').insert([{
-      id: meetingIdRef.current,
-      title: `Meeting on ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`,
-      status: 'in_progress',
-      start_time: new Date().toISOString()
-    }])
+    const { error } = await supabase.from('meetings').insert([
+      {
+        id: meetingIdRef.current,
+        user_id: user?.id,
+        title: `Meeting on ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`,
+        status: 'in_progress',
+        start_time: new Date().toISOString(),
+      },
+    ])
 
     if (error) {
-      console.error("Failed to initialize meeting record:", error)
+      console.error('Failed to initialize meeting record:', error)
       // If RLS blocks it, we might still want to try to start or just alert. Let's proceed to allow WS anyway.
     }
 
@@ -191,25 +175,29 @@ function Home() {
             )}
           </div>
           <div className="flex items-center gap-4">
-            <StartButton isRecording={active} onClick={toggleSession} />
-            <SourceSelector
-              selectedSource={source}
-              onSourceChange={setSource}
-            />
-            <Link
-              to="/meetings"
-              className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
-              title="Past Meetings"
-            >
-              <History className="w-4 h-4" />
-            </Link>
-            <button
-              onClick={handleSignOut}
-              className="p-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <StartButton isRecording={active} onClick={toggleSession} />
+              <SourceSelector
+                selectedSource={source}
+                onSourceChange={setSource}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/meetings"
+                className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+                title="Past Meetings"
+              >
+                <History className="w-6 h-6" />
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="p-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+                title="Sign Out"
+              >
+                <LogOut className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -254,7 +242,7 @@ function Home() {
                           : 'UPDATE') + titleAddendum
                       }
                       description={insight.summary}
-                      timestamp={`${formatTime(insight.start_time)} → ${formatTime(insight.end_time)}`}
+                      timestamp={`${formatTime(insight.start_ts)} → ${formatTime(insight.end_ts)}`}
                       isFlagged={false}
                       onAccept={
                         insight.type === 'flag' && !isResolved && insight.id

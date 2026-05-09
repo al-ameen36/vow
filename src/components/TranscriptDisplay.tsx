@@ -1,19 +1,22 @@
-import { useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useRef } from 'react'
+import { motion } from 'motion/react'
 
 interface TranscriptDisplayProps {
-  transcript: string;
-  isListening: boolean;
+  transcript: string
+  isListening: boolean
 }
 
-export function TranscriptDisplay({ transcript, isListening }: TranscriptDisplayProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+export function TranscriptDisplay({
+  transcript,
+  isListening,
+}: TranscriptDisplayProps) {
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [transcript]);
+  }, [transcript])
 
   return (
     <div className="relative">
@@ -28,7 +31,7 @@ export function TranscriptDisplay({ transcript, isListening }: TranscriptDisplay
 
       <div
         ref={scrollRef}
-        className="relative w-full h-64 bg-gradient-to-br from-black/90 to-zinc-950/90 backdrop-blur-xl border border-zinc-800/50 rounded-2xl p-6 overflow-y-auto custom-scrollbar"
+        className="relative w-full bg-gradient-to-br from-black/90 to-zinc-950/90 backdrop-blur-xl border border-zinc-800/50 rounded-2xl p-6 overflow-y-auto custom-scrollbar"
       >
         {!isListening && !transcript ? (
           <div className="flex items-center justify-center h-full">
@@ -48,5 +51,5 @@ export function TranscriptDisplay({ transcript, isListening }: TranscriptDisplay
         )}
       </div>
     </div>
-  );
+  )
 }
