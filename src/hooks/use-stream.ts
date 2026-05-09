@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-
+import { supabase } from '#/lib/supabase'
 type AudioSource = 'mic' | 'tab'
 
 export function useWhisperStream() {
@@ -71,6 +71,8 @@ export function useWhisperStream() {
     socketRef.current = socket
 
     socket.onopen = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+
       socket.send(
         JSON.stringify({
           uid: sessionId,
@@ -79,6 +81,7 @@ export function useWhisperStream() {
           task: 'transcribe',
           model: 'small',
           use_vad: true,
+          token: session?.access_token,
         }),
       )
 
