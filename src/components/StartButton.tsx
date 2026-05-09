@@ -1,23 +1,32 @@
 import { motion } from 'motion/react'
 import { Circle, Square } from 'lucide-react'
+import { cn } from '#/lib/utils'
 
 interface StartButtonProps {
   isRecording: boolean
   onClick: () => void
+  disabled: boolean
 }
 
-export function StartButton({ isRecording, onClick }: StartButtonProps) {
+export function StartButton({
+  isRecording,
+  onClick,
+  disabled,
+}: StartButtonProps) {
   return (
     <motion.button
       onClick={onClick}
-      className={`relative w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${
-        isRecording 
-          ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700' 
-          : 'bg-red-500 hover:bg-red-400'
-      }`}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
-      title={isRecording ? "Stop Recording" : "Start Recording"}
+      className={cn(
+        'relative w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg',
+        isRecording
+          ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700'
+          : 'bg-red-500 hover:bg-red-400',
+        disabled ? 'opacity-20' : '',
+      )}
+      whileHover={!disabled ? { scale: 1.05 } : undefined}
+      whileTap={!disabled ? { scale: 0.95 } : undefined}
+      title={isRecording ? 'Stop Recording' : 'Start Recording'}
+      disabled={disabled}
     >
       {/* Pulse effect when recording */}
       {isRecording && (

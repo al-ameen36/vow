@@ -41,6 +41,7 @@ function Home() {
   const [insights, setInsights] = useState<Insight[]>([])
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const meetingIdRef = useRef(crypto.randomUUID())
+  const [disableRecBtn, setDisableRecBtn] = useState(false)
 
   // Cleanup websocket when navigating away
   useEffect(() => {
@@ -93,12 +94,16 @@ function Home() {
   }
 
   const toggleSession = async () => {
+    setDisableRecBtn(true)
+
     if (active) {
       stop()
       await supabase
         .from('meetings')
         .update({ status: 'completed', end_time: new Date().toISOString() })
         .eq('id', meetingIdRef.current)
+
+      setDisableRecBtn(false)
       return
     }
 
@@ -120,6 +125,7 @@ function Home() {
 
     // 2. Start the WebSocket
     start(source, meetingIdRef.current)
+    setDisableRecBtn(false)
   }
 
   const handleAcceptCommitment = async (id: string) => {
@@ -176,7 +182,11 @@ function Home() {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <StartButton isRecording={active} onClick={toggleSession} />
+              <StartButton
+                isRecording={active}
+                onClick={toggleSession}
+                disabled={disableRecBtn}
+              />
               <SourceSelector
                 selectedSource={source}
                 onSourceChange={setSource}
