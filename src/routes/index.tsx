@@ -1,8 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
+import { LogOut } from 'lucide-react'
 
 import { useWhisperStream } from '#/hooks/use-stream'
 import { supabase } from '#/lib/supabase'
+import { useAuth } from '#/contexts/AuthContext'
 
 import { TranscriptDisplay } from '#/components/TranscriptDisplay'
 import { InsightCard } from '#/components/InsightCard'
@@ -14,13 +16,21 @@ export const Route = createFileRoute('/')({
   component: Home,
 
   loader: async () => {
-    const { data: insights } = await supabase
-      .from('insights')
-      .select()
-      .order('created_at', { ascending: false })
+    // Only load initial insights if session is instantly available
+    // We defer the redirect strictly to the component so we don't drop hash URL fragments from Auth emails
+    const { data: { session } } = await supabase.auth.getSession()
+
+    let insights: any[] = []
+    if (session) {
+      const { data } = await supabase
+        .from('insights')
+        .select()
+        .order('created_at', { ascending: false })
+      insights = data ?? []
+    }
 
     return {
-      insights: insights ?? [],
+      insights
     }
   },
 })
@@ -49,14 +59,29 @@ function formatTime(seconds?: number) {
 }
 
 function Home() {
+  const navigate = useNavigate()
   const { active, transcript, start, stop } = useWhisperStream()
   const { insights: initialInsights } = Route.useLoaderData()
+  const { user, isLoading } = useAuth()
   const [source, setSource] = useState<'mic' | 'tab'>('mic')
   const [insights, setInsights] = useState<Insight[]>(initialInsights)
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const meetingIdRef = useRef(crypto.randomUUID())
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
   useEffect(() => {
+    if (!isLoading && !user) {
+      navigate({ to: '/login' })
+    }
+  }, [user, isLoading, navigate])
+
+  useEffect(() => {
+    if (!user) return
+
     const channel = supabase
       .channel('insights-realtime')
       .on(
@@ -76,7 +101,15 @@ function Home() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [user])
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-black" />
+  }
+
+  if (!user) {
+    return null // useEffect handles redirect
+  }
 
   const toggleSession = () => {
     if (active) {
@@ -132,6 +165,11 @@ function Home() {
             <span className="text-sm text-zinc-400 uppercase tracking-wider font-semibold">
               {active ? 'LIVE' : 'IDLE'}
             </span>
+            {user && (
+              <span className="text-xs text-zinc-600 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 ml-2 hidden sm:inline-block">
+                {user.email}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <StartButton isRecording={active} onClick={toggleSession} />
@@ -139,6 +177,13 @@ function Home() {
               selectedSource={source}
               onSourceChange={setSource}
             />
+            <button
+              onClick={handleSignOut}
+              className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
