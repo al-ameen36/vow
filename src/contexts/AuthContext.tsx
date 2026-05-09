@@ -24,7 +24,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
-      setIsLoading(false)
     })
 
     // Listen for auth changes
