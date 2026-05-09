@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { LogOut } from 'lucide-react'
+import { LogOut, History } from 'lucide-react'
 
 import { useWhisperStream } from '#/hooks/use-stream'
 import { supabase } from '#/lib/supabase'
@@ -111,11 +111,30 @@ function Home() {
     return null // useEffect handles redirect
   }
 
-  const toggleSession = () => {
+  const toggleSession = async () => {
     if (active) {
       stop()
+      await supabase
+        .from('meetings')
+        .update({ status: 'completed', end_time: new Date().toISOString() })
+        .eq('id', meetingIdRef.current)
       return
     }
+
+    // 1. Create the meeting historically in Supabase before connecting the sockets
+    const { error } = await supabase.from('meetings').insert([{
+      id: meetingIdRef.current,
+      title: `Meeting on ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`,
+      status: 'in_progress',
+      start_time: new Date().toISOString()
+    }])
+
+    if (error) {
+      console.error("Failed to initialize meeting record:", error)
+      // If RLS blocks it, we might still want to try to start or just alert. Let's proceed to allow WS anyway.
+    }
+
+    // 2. Start the WebSocket
     start(source, meetingIdRef.current)
   }
 
@@ -177,9 +196,16 @@ function Home() {
               selectedSource={source}
               onSourceChange={setSource}
             />
+            <Link
+              to="/meetings"
+              className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+              title="Past Meetings"
+            >
+              <History className="w-4 h-4" />
+            </Link>
             <button
               onClick={handleSignOut}
-              className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+              className="p-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
