@@ -135,14 +135,15 @@ function Home() {
           </div>
           <div className="flex items-center gap-4">
             <StartButton isRecording={active} onClick={toggleSession} />
-            <SourceSelector selectedSource={source} onSourceChange={setSource} />
+            <SourceSelector
+              selectedSource={source}
+              onSourceChange={setSource}
+            />
           </div>
         </div>
 
         {/* Transcript Display */}
         <TranscriptDisplay transcript={transcript} isListening={active} />
-
-
 
         {/* Insights Section */}
         {insights.length > 0 && (
@@ -160,8 +161,8 @@ function Home() {
 
             {/* All Insights in One List */}
             {filteredInsights.length > 0 ? (
-              <div 
-                className="space-y-3 h-[450px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-700" 
+              <div
+                className="space-y-3 h-[500px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-700"
                 style={{ scrollbarWidth: 'thin' }}
               >
                 {filteredInsights.map((insight, idx) => {
