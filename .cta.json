@@ -6,18 +6,11 @@
   "includeExamples": false,
   "tailwind": true,
   "addOnOptions": {},
-  "envVarValues": {
-    "VITE_CONVEX_URL": "abc"
-  },
+  "envVarValues": {},
   "git": true,
   "install": true,
   "routerOnly": false,
   "version": 1,
   "framework": "react",
-  "chosenAddOns": [
-    "eslint",
-    "shadcn",
-    "tanstack-query",
-    "convex"
-  ]
+  "chosenAddOns": ["eslint", "shadcn", "tanstack-query"]
 }
