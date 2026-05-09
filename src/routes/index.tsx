@@ -185,14 +185,14 @@ function Home() {
             <div className="flex items-center gap-2">
               <Link
                 to="/meetings"
-                className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+                className="p-2 ml-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-md transition-all duration-200"
                 title="Past Meetings"
               >
                 <History className="w-6 h-6" />
               </Link>
               <button
                 onClick={handleSignOut}
-                className="p-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg transition-all duration-200"
+                className="p-2 text-zinc-500 hover:text-white bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-md transition-all duration-200"
                 title="Sign Out"
               >
                 <LogOut className="w-6 h-6" />
@@ -205,68 +205,65 @@ function Home() {
         <TranscriptDisplay transcript={transcript} isListening={active} />
 
         {/* Insights Section */}
-        {insights.length > 0 && (
-          <div className="space-y-6 flex-1 pb-10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-                Insights
-              </h2>
-              <InsightFilter
-                activeFilter={activeFilter}
-                onFilterChange={setActiveFilter}
-                counts={filterCounts}
-              />
-            </div>
-
-            {/* All Insights in One List */}
-            {filteredInsights.length > 0 ? (
-              <div
-                className="space-y-3 h-[500px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-700"
-                style={{ scrollbarWidth: 'thin' }}
-              >
-                {filteredInsights.map((insight, idx) => {
-                  const isResolved =
-                    insight.status === 'accepted' ||
-                    insight.status === 'rejected'
-                  const titleAddendum = isResolved
-                    ? ` (${insight.status?.toUpperCase()})`
-                    : ''
-
-                  return (
-                    <InsightCard
-                      key={insight.id ?? idx}
-                      type={insight.type === 'flag' ? 'COMMITMENT' : 'UPDATE'}
-                      title={
-                        (insight.type === 'flag'
-                          ? 'COMMITMENT DETECTED'
-                          : 'UPDATE') + titleAddendum
-                      }
-                      description={insight.summary}
-                      timestamp={`${formatTime(insight.start_ts)} → ${formatTime(insight.end_ts)}`}
-                      isFlagged={false}
-                      onAccept={
-                        insight.type === 'flag' && !isResolved && insight.id
-                          ? () => handleAcceptCommitment(insight.id!)
-                          : undefined
-                      }
-                      onReject={
-                        insight.type === 'flag' && !isResolved && insight.id
-                          ? () => handleRejectCommitment(insight.id!)
-                          : undefined
-                      }
-                    />
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12">
-                <p className="text-zinc-500 text-sm">
-                  No {activeFilter} insights yet
-                </p>
-              </div>
-            )}
+        <div className="space-y-6 flex-1 pb-10">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+              Insights
+            </h2>
+            <InsightFilter
+              activeFilter={activeFilter}
+              onFilterChange={setActiveFilter}
+              counts={filterCounts}
+            />
           </div>
-        )}
+
+          {/* All Insights in One List */}
+          {filteredInsights.length > 0 ? (
+            <div
+              className="space-y-3 h-[500px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-700"
+              style={{ scrollbarWidth: 'thin' }}
+            >
+              {filteredInsights.map((insight, idx) => {
+                const isResolved =
+                  insight.status === 'accepted' || insight.status === 'rejected'
+                const titleAddendum = isResolved
+                  ? ` (${insight.status?.toUpperCase()})`
+                  : ''
+
+                return (
+                  <InsightCard
+                    key={insight.id ?? idx}
+                    type={insight.type === 'flag' ? 'COMMITMENT' : 'UPDATE'}
+                    title={
+                      (insight.type === 'flag'
+                        ? 'COMMITMENT DETECTED'
+                        : 'UPDATE') + titleAddendum
+                    }
+                    description={insight.summary}
+                    timestamp={`${formatTime(insight.start_ts)} → ${formatTime(insight.end_ts)}`}
+                    isFlagged={false}
+                    onAccept={
+                      insight.type === 'flag' && !isResolved && insight.id
+                        ? () => handleAcceptCommitment(insight.id!)
+                        : undefined
+                    }
+                    onReject={
+                      insight.type === 'flag' && !isResolved && insight.id
+                        ? () => handleRejectCommitment(insight.id!)
+                        : undefined
+                    }
+                  />
+                )
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12">
+              <p className="text-zinc-500 text-sm">
+                No {activeFilter === 'all' ? '' : activeFilter} insights yet
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

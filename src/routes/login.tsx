@@ -44,7 +44,7 @@ function Login() {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl overflow-hidden">
+      <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-md shadow-xl overflow-hidden">
         <div className="p-8">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-white mb-2">
@@ -58,7 +58,7 @@ function Login() {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-lg mb-6">
+            <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-md mb-6">
               <p className="text-red-400 text-sm text-center">{error}</p>
             </div>
           )}
@@ -77,7 +77,7 @@ function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all duration-200"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all duration-200"
                 placeholder="you@example.com"
               />
             </div>
@@ -95,7 +95,7 @@ function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all duration-200"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all duration-200"
                 placeholder="••••••••"
               />
             </div>
@@ -103,7 +103,7 @@ function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:hover:bg-cyan-600 text-white font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 mt-6"
+              className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:hover:bg-cyan-600 text-white font-medium py-3 px-4 rounded-md transition-all duration-200 flex items-center justify-center gap-2 mt-6"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

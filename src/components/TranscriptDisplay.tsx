@@ -31,10 +31,10 @@ export function TranscriptDisplay({
 
       <div
         ref={scrollRef}
-        className="relative w-full bg-gradient-to-br from-black/90 to-zinc-950/90 backdrop-blur-xl border border-zinc-800/50 rounded-2xl p-6 overflow-y-auto custom-scrollbar"
+        className="relative w-full bg-gradient-to-br from-black/90 to-zinc-950/90 backdrop-blur-xl border border-zinc-800/50 rounded-md p-6 overflow-y-auto custom-scrollbar"
       >
         {!isListening && !transcript ? (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-[40vh]">
             <p className="text-zinc-600 text-sm">Waiting for audio...</p>
           </div>
         ) : (

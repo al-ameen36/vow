@@ -90,7 +90,7 @@ function MeetingDetail() {
             Back to Dashboard
           </Link>
 
-          <div className="p-6 bg-zinc-950 border border-zinc-800 rounded-2xl flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="p-6 bg-zinc-950 border border-zinc-800 rounded-md flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent mb-2">
                 {meeting.title || 'Untitled Session'}
@@ -123,7 +123,7 @@ function MeetingDetail() {
             <h2 className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">
               Session Transcript
             </h2>
-            <div className="h-[60vh] bg-zinc-950 border border-zinc-900 rounded-2xl overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
+            <div className="h-[60vh] bg-zinc-950 border border-zinc-900 rounded-md overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
               <TranscriptDisplay
                 transcript={
                   transcript ||
@@ -189,7 +189,7 @@ function MeetingDetail() {
             )}
 
             {insights.length === 0 && (
-              <div className="flex flex-col items-center justify-center p-8 bg-zinc-950/50 rounded-xl border border-zinc-800/50 border-dashed scrollbar-thin">
+              <div className="flex flex-col items-center justify-center p-8 bg-zinc-950/50 rounded-md border border-zinc-800/50 border-dashed scrollbar-thin">
                 <p className="text-zinc-500 text-sm">
                   No insights were detected.
                 </p>
