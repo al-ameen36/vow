@@ -5,6 +5,10 @@ colorFrom: indigo
 colorTo: blue
 sdk: docker
 pinned: false
+secrets:
+  - VITE_SUPABASE_URL
+  - VITE_SUPABASE_ANON_KEY
+  - VITE_WHISPER_SERVER_URL
 ---
 
 # ⚖️ Vow: Real-Time Organizational Memory & Alignment
