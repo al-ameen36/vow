@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LogOut, History } from 'lucide-react'
 
 import { useWhisperStream } from '#/hooks/use-stream'
@@ -12,6 +12,7 @@ import { SourceSelector } from '#/components/SourceSelector'
 import { StartButton } from '#/components/StartButton'
 import { InsightFilter } from '#/components/InsightFilter'
 import { formatTime } from '#/lib/utils'
+import { useNetwork } from '#/hooks/use-network'
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -37,10 +38,11 @@ function Home() {
   const navigate = useNavigate()
   const { active, transcript, start, stop } = useWhisperStream()
   const { user, isLoading } = useAuth()
+  const { isOnline } = useNetwork()
   const [source, setSource] = useState<'mic' | 'tab'>('mic')
   const [insights, setInsights] = useState<Insight[]>([])
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
-  const meetingIdRef = useRef(crypto.randomUUID())
+  const [meetingId, setMeetingId] = useState<string | null>(null)
   const [disableRecBtn, setDisableRecBtn] = useState(false)
 
   // Cleanup websocket when navigating away
@@ -61,30 +63,6 @@ function Home() {
     }
   }, [user, isLoading, navigate])
 
-  useEffect(() => {
-    if (!user) return
-
-    const channel = supabase
-      .channel('insights-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'insights',
-          filter: `meeting_id=eq.${meetingIdRef.current}`,
-        },
-        (payload) => {
-          setInsights((prev) => [payload.new as Insight, ...prev])
-        },
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user])
-
   if (isLoading) {
     return <div className="min-h-screen bg-black" />
   }
@@ -98,33 +76,24 @@ function Home() {
 
     if (active) {
       stop()
-      await supabase
-        .from('meetings')
-        .update({ status: 'completed', end_time: new Date().toISOString() })
-        .eq('id', meetingIdRef.current)
+      if (meetingId) {
+        await supabase
+          .from('meetings')
+          .update({ status: 'completed', end_time: new Date().toISOString() })
+          .eq('id', meetingId)
+      }
 
       setDisableRecBtn(false)
       return
     }
 
-    // 1. Create the meeting historically in Supabase before connecting the sockets
-    const { error } = await supabase.from('meetings').insert([
-      {
-        id: meetingIdRef.current,
-        user_id: user?.id,
-        title: `Meeting on ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`,
-        status: 'in_progress',
-        start_time: new Date().toISOString(),
-      },
-    ])
-
-    if (error) {
-      console.error('Failed to initialize meeting record:', error)
-      // If RLS blocks it, we might still want to try to start or just alert. Let's proceed to allow WS anyway.
-    }
+    const nextMeetingId = crypto.randomUUID()
+    setMeetingId(nextMeetingId)
+    // Clear insights from previous run
+    setInsights([])
 
     // 2. Start the WebSocket
-    start(source, meetingIdRef.current)
+    start(source)
     setDisableRecBtn(false)
   }
 
@@ -185,7 +154,7 @@ function Home() {
               <StartButton
                 isRecording={active}
                 onClick={toggleSession}
-                disabled={disableRecBtn}
+                disabled={!isOnline || disableRecBtn}
               />
               <SourceSelector
                 selectedSource={source}

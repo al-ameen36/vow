@@ -13,7 +13,7 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.SubmitEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
@@ -36,7 +36,7 @@ function Login() {
         window.location.href = '/'
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during authentication')
+      setError(isSignUp ? 'Signup Failed' : 'Login failed')
     } finally {
       setLoading(false)
     }
