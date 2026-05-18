@@ -1,35 +1,54 @@
 import { useRef, useState, useCallback } from 'react'
 import { useAuth } from '#/contexts/AuthContext'
+import type { Insight } from '#/types/transcripts'
 
 type AudioSource = 'mic' | 'tab'
 
-type TranscriptLine = {
+type TranscriptSegment = {
   start: number
   end: number
   text: string
 }
 
-const formatTime = (seconds: number) => {
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+const removeOverlap = (base: string, partial: string) => {
+  const cleanBase = base.trim()
+  const cleanPartial = partial.trim()
+
+  if (!cleanBase || !cleanPartial) return cleanPartial
+
+  const baseWords = cleanBase.split(/\s+/)
+
+  for (let i = baseWords.length; i > 0; i--) {
+    const overlap = baseWords.slice(-i).join(' ')
+    if (cleanPartial.startsWith(overlap)) {
+      return cleanPartial.slice(overlap.length).trim()
+    }
+  }
+
+  return cleanPartial
 }
 
 export function useWhisperStream() {
   const { session } = useAuth()
+
   const [active, setActive] = useState(false)
-  const [transcript, setTranscript] = useState('')
   const [source, setSource] = useState<AudioSource>('mic')
+  const [insights, setInsights] = useState<Insight[]>([])
+  const [segments, setSegments] = useState<TranscriptSegment[]>([])
+  const [liveText, setLiveText] = useState('')
 
   const socketRef = useRef<WebSocket | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null)
 
-  const transcriptLinesRef = useRef<TranscriptLine[]>([])
+  const transcriptLinesRef = useRef<TranscriptSegment[]>([])
   const sentenceBufferRef = useRef('')
   const sentenceStartRef = useRef<number | null>(null)
   const partialRef = useRef('')
   const cleanedUpRef = useRef(false)
+  const isActiveRef = useRef(false)
 
   const getAudioStream = (selectedSource: AudioSource) => {
     if (selectedSource === 'mic') {
@@ -43,44 +62,51 @@ export function useWhisperStream() {
   }
 
   const updateTranscript = useCallback(() => {
-    const finalText = transcriptLinesRef.current
-      .map(
-        (line) =>
-          `[${formatTime(line.start)} → ${formatTime(line.end)}] ${line.text}`,
-      )
-      .join('\n')
+    const finalSegments = transcriptLinesRef.current
 
-    const liveText = sentenceBufferRef.current
-      ? [sentenceBufferRef.current, partialRef.current]
-          .filter(Boolean)
-          .join(' ')
-          .trim()
-      : partialRef.current.trim()
+    setSegments([...finalSegments])
 
-    const combined = liveText
-      ? `${finalText}${finalText ? '\n' : ''}[live] ${liveText}`
-      : finalText
+    const liveBase = sentenceBufferRef.current.trim()
+    const livePartial = partialRef.current.trim()
+    const cleanPartial = removeOverlap(liveBase, livePartial)
+    const combinedLive = [liveBase, cleanPartial]
+      .filter(Boolean)
+      .join(' ')
+      .trim()
 
-    setTranscript(combined)
+    setLiveText(combinedLive)
   }, [])
 
-  const flushSentence = useCallback((endTime: number) => {
-    const text = sentenceBufferRef.current.trim()
-    if (!text) return
+  const flushSentence = useCallback(
+    (endTime: number) => {
+      const text = sentenceBufferRef.current.trim()
+      if (!text) return
 
-    transcriptLinesRef.current.push({
-      start: sentenceStartRef.current ?? endTime,
-      end: endTime,
-      text,
-    })
+      transcriptLinesRef.current.push({
+        start: sentenceStartRef.current ?? endTime,
+        end: endTime,
+        text,
+      })
 
-    sentenceBufferRef.current = ''
-    sentenceStartRef.current = null
-  }, [])
+      sentenceBufferRef.current = ''
+      sentenceStartRef.current = null
+      updateTranscript()
+    },
+    [updateTranscript],
+  )
 
   const cleanup = useCallback(async () => {
     if (cleanedUpRef.current) return
     cleanedUpRef.current = true
+    isActiveRef.current = false
+
+    try {
+      sourceNodeRef.current?.disconnect()
+    } catch {}
+
+    try {
+      workletNodeRef.current?.disconnect()
+    } catch {}
 
     try {
       await audioCtxRef.current?.close()
@@ -91,47 +117,56 @@ export function useWhisperStream() {
     socketRef.current = null
     audioCtxRef.current = null
     streamRef.current = null
-
-    transcriptLinesRef.current = []
-    sentenceBufferRef.current = ''
-    sentenceStartRef.current = null
-    partialRef.current = ''
+    sourceNodeRef.current = null
+    workletNodeRef.current = null
 
     setActive(false)
   }, [])
 
   const stop = useCallback(() => {
+    const fallbackEnd =
+      sentenceStartRef.current ?? transcriptLinesRef.current.at(-1)?.end ?? 0
+
+    if (sentenceBufferRef.current.trim()) {
+      flushSentence(fallbackEnd)
+    }
+
     socketRef.current?.close()
     void cleanup()
-  }, [cleanup])
+  }, [cleanup, flushSentence])
 
   const start = useCallback(
     async (selectedSource: AudioSource = source) => {
+      if (!session?.access_token) return
+
       cleanedUpRef.current = false
+      isActiveRef.current = true
+
       transcriptLinesRef.current = []
       sentenceBufferRef.current = ''
       sentenceStartRef.current = null
       partialRef.current = ''
 
-      setTranscript('')
+      setSegments([])
+      setLiveText('')
+      setInsights([])
       setSource(selectedSource)
 
       const socket = new WebSocket(import.meta.env.VITE_WHISPER_SERVER_URL)
       socketRef.current = socket
 
-      socket.onopen = async () => {
-        socket.send(
-          JSON.stringify({
-            token: session?.access_token,
-          }),
-        )
-
+      const beginAudio = async () => {
         let stream: MediaStream
         try {
           stream = await getAudioStream(selectedSource)
         } catch (err) {
           console.warn('Audio permission/device error:', err)
           stop()
+          return
+        }
+
+        if (!isActiveRef.current) {
+          stream.getTracks().forEach((t) => t.stop())
           return
         }
 
@@ -159,8 +194,16 @@ export function useWhisperStream() {
         await audioCtx.audioWorklet.addModule(url)
         URL.revokeObjectURL(url)
 
+        if (!isActiveRef.current) {
+          await audioCtx.close().catch(() => {})
+          return
+        }
+
         const sourceNode = audioCtx.createMediaStreamSource(stream)
         const workletNode = new AudioWorkletNode(audioCtx, 'vow-processor')
+
+        sourceNodeRef.current = sourceNode
+        workletNodeRef.current = workletNode
 
         workletNode.port.onmessage = (event) => {
           if (socket.readyState === WebSocket.OPEN) {
@@ -177,9 +220,25 @@ export function useWhisperStream() {
         setActive(true)
       }
 
-      socket.onmessage = (event) => {
+      socket.onopen = async () => {
+        socket.send(JSON.stringify({ token: session.access_token }))
+      }
+
+      socket.onmessage = async (event) => {
+        if (!isActiveRef.current) return
+
         try {
           const data = JSON.parse(event.data as string)
+          if (data.message === 'auth_ok') {
+            await beginAudio()
+            return
+          }
+
+          if (data.message === 'Insight') {
+            setInsights((prev) => [...prev, data.data as Insight])
+            return
+          }
+
           const text = data?.metadata?.transcript?.trim()
           if (!text) return
 
@@ -190,11 +249,11 @@ export function useWhisperStream() {
           }
 
           if (data.message === 'AddTranscript') {
-            const start = data?.metadata?.start_time ?? 0
-            const end = data?.metadata?.end_time ?? start
+            const startTime = data?.metadata?.start_time ?? 0
+            const endTime = data?.metadata?.end_time ?? startTime
 
             if (sentenceStartRef.current === null) {
-              sentenceStartRef.current = start
+              sentenceStartRef.current = startTime
             }
 
             sentenceBufferRef.current = sentenceBufferRef.current
@@ -202,14 +261,16 @@ export function useWhisperStream() {
               : text
 
             const chunkLooksComplete =
-              /[.!?]$/.test(text) || sentenceBufferRef.current.length >= 120
+              sentenceBufferRef.current.length >= 80 &&
+              (/[.!?]\s*$/.test(sentenceBufferRef.current) || text.length < 3)
 
             if (chunkLooksComplete) {
-              flushSentence(end)
+              flushSentence(endTime)
+            } else {
+              updateTranscript()
             }
 
             partialRef.current = ''
-            updateTranscript()
           }
         } catch {
           // ignore malformed packets
@@ -224,12 +285,21 @@ export function useWhisperStream() {
         void cleanup()
       }
     },
-    [cleanup, flushSentence, source, stop, updateTranscript],
+    [
+      cleanup,
+      flushSentence,
+      session?.access_token,
+      source,
+      stop,
+      updateTranscript,
+    ],
   )
 
   return {
     active,
-    transcript,
+    segments,
+    liveText,
+    insights,
     start,
     stop,
     source,
