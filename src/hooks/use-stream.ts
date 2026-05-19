@@ -235,7 +235,7 @@ export function useWhisperStream() {
           }
 
           if (data.message === 'Insight') {
-            setInsights((prev) => [...prev, data.data as Insight])
+            setInsights((prev) => [data.data as Insight, ...prev])
             return
           }
 

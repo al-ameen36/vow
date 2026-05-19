@@ -1,3 +1,11 @@
+export type Meeting = {
+  id: string
+  title: string
+  start_time: string | null
+  end_time: string | null
+  created_at: string
+}
+
 export type Insight = {
   id: string
   content: string

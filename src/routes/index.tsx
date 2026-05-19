@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { LogOut, History } from 'lucide-react'
 
 import { useWhisperStream } from '#/hooks/use-stream'
@@ -16,15 +16,25 @@ export const Route = createFileRoute('/')({
   component: Home,
 })
 
+type FilterType =
+  | 'all'
+  | 'action_item'
+  | 'decision'
+  | 'risk'
+  | 'follow_up'
+  | 'update'
+
 function Home() {
   const navigate = useNavigate()
   const { active, segments, liveText, insights, start, stop } =
     useWhisperStream()
+
   const { user, isLoading } = useAuth()
   const { isOnline } = useNetwork()
 
   const [source, setSource] = useState<'mic' | 'tab'>('mic')
   const [disableRecBtn, setDisableRecBtn] = useState(false)
+  const [filter, setFilter] = useState<FilterType>('all')
 
   useEffect(() => {
     return () => {
@@ -38,20 +48,11 @@ function Home() {
     }
   }, [user, isLoading, navigate])
 
-  if (isLoading) {
-    return <div className="min-h-screen bg-black" />
-  }
-
-  if (!user) {
-    return null
-  }
-
   const toggleSession = async () => {
     setDisableRecBtn(true)
 
     if (active) {
       stop()
-
       setDisableRecBtn(false)
       return
     }
@@ -60,14 +61,39 @@ function Home() {
     setDisableRecBtn(false)
   }
 
+  const filteredInsights = useMemo(() => {
+    if (filter === 'all') return insights
+    return insights.filter((i) => i.type === filter)
+  }, [insights, filter])
+
+  const filters: FilterType[] = [
+    'all',
+    'action_item',
+    'decision',
+    'risk',
+    'follow_up',
+    'update',
+  ]
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-black" />
+  }
+
+  if (!user) {
+    return null
+  }
+
   return (
     <div className="size-full bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 text-white overflow-auto relative">
       <div className="max-w-5xl mx-auto p-6 space-y-8 min-h-screen relative z-10">
+        {/* HEADER */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div
-                className={`w-2.5 h-2.5 rounded-full ${active ? 'bg-green-400' : 'bg-zinc-600'}`}
+                className={`w-2.5 h-2.5 rounded-full ${
+                  active ? 'bg-green-400' : 'bg-zinc-600'
+                }`}
               />
               {active && (
                 <div className="absolute inset-0 rounded-full bg-green-400 animate-ping" />
@@ -78,11 +104,9 @@ function Home() {
               {active ? 'LIVE' : 'IDLE'}
             </span>
 
-            {user && (
-              <span className="text-xs text-zinc-600 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 ml-2 hidden sm:inline-block">
-                {user.email}
-              </span>
-            )}
+            <span className="text-xs text-zinc-600 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 ml-2 hidden sm:inline-block">
+              {user.email}
+            </span>
           </div>
 
           <div className="flex items-center gap-4">
@@ -121,29 +145,49 @@ function Home() {
           </div>
         </div>
 
+        {/* TRANSCRIPT */}
         <TranscriptDisplay
           segments={segments}
           liveText={liveText}
           isListening={active}
         />
 
-        <div className="space-y-6 flex-1 pb-10">
-          <h2 className="text-xl font-semibold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-            Insights
-          </h2>
+        {/* INSIGHTS */}
+        <div className="space-y-4 flex-1 pb-10">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+              Insights
+            </h2>
 
-          {insights.length > 0 ? (
-            <div
-              className="space-y-3 h-[500px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-700"
-              style={{ scrollbarWidth: 'thin' }}
-            >
-              {insights.map((insight) => (
+            {/* FILTER */}
+            <div className="flex gap-2 flex-wrap">
+              {filters.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setFilter(type)}
+                  className={`px-3 py-1 text-xs rounded-md border transition ${
+                    filter === type
+                      ? 'bg-zinc-800 border-zinc-600 text-white'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredInsights.length > 0 ? (
+            <div className="space-y-3 h-[500px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-700">
+              {filteredInsights.map((insight) => (
                 <InsightCard key={insight.id} insight={insight} />
               ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12">
-              <p className="text-zinc-500 text-sm">No insights yet</p>
+              <p className="text-zinc-500 text-sm">
+                No insights for this filter
+              </p>
             </div>
           )}
         </div>

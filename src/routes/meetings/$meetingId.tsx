@@ -3,25 +3,8 @@ import { ArrowLeft, Clock, CalendarDays } from 'lucide-react'
 import { supabase } from '#/lib/supabase'
 
 import { InsightCard } from '#/components/InsightCard'
-import { TranscriptDisplay } from '#/components/TranscriptDisplay'
+import type { Insight, Meeting, Segment } from '#/types/transcripts'
 import { formatTime } from '#/lib/utils'
-
-type Meeting = {
-  id: string
-  title: string
-  start_time: string | null
-  end_time: string | null
-  created_at: string
-}
-
-type Insight = {
-  id: string
-  type: 'update' | 'flag'
-  summary: string
-  start_ts: number | null
-  end_ts: number | null
-  status: 'pending' | 'accepted' | 'rejected' | null
-}
 
 export const Route = createFileRoute('/meetings/$meetingId')({
   component: MeetingDetail,
@@ -36,7 +19,6 @@ export const Route = createFileRoute('/meetings/$meetingId')({
 
     const { meetingId } = params
 
-    // 1. Fetch meeting
     const { data: meeting } = await supabase
       .from('meetings')
       .select('*')
@@ -47,40 +29,44 @@ export const Route = createFileRoute('/meetings/$meetingId')({
       throw new Error('Meeting not found')
     }
 
-    // 2. Fetch insights
-    const { data: insights } = await supabase
-      .from('insights')
+    // const { data: insights } = await supabase
+    //   .from('insights')
+    //   .select('*')
+    //   .eq('segment_id', meetingId)
+    //   .order('start_ts', { ascending: true })
+
+    const { data: segments } = await supabase
+      .from('segments')
       .select('*')
       .eq('meeting_id', meetingId)
-      .order('start_ts', { ascending: true })
+      .order('start_time', { ascending: true })
 
-    // 3. Fetch transcripts
-    const { data: transcripts } = await supabase
-      .from('transcripts')
-      .select('*')
-      .eq('meeting_id', meetingId)
-
-    // Combine full transcript
-    const fullTranscript = transcripts?.[0].transcript || ''
+    console.log(meeting)
+    console.log(segments)
 
     return {
       meeting: meeting as Meeting,
-      insights: (insights ?? []) as Insight[],
-      transcript: fullTranscript,
+      insights: [] as Insight[],
+      segments: (segments ?? []) as Segment[],
     }
   },
 })
 
 function MeetingDetail() {
-  const { meeting, insights, transcript } = Route.useLoaderData()
+  const { meeting, insights, segments } = Route.useLoaderData()
 
-  const flags = insights.filter((i) => i.type === 'flag')
-  const updates = insights.filter((i) => i.type === 'update')
+  const importantInsights = insights.filter(
+    (i) =>
+      i.type === 'action_item' || i.type === 'decision' || i.type === 'risk',
+  )
+
+  const generalInsights = insights.filter(
+    (i) => i.type === 'follow_up' || i.type === 'update',
+  )
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <div className="max-w-5xl mx-auto space-y-8">
-        {/* Navigation & Header */}
         <div>
           <Link
             to="/meetings"
@@ -116,80 +102,73 @@ function MeetingDetail() {
           </div>
         </div>
 
-        {/* Content Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column: Full Transcript */}
           <div className="space-y-4">
             <h2 className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">
               Session Transcript
             </h2>
-            <div className="h-[60vh] bg-zinc-950 border border-zinc-900 rounded-md overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
-              <TranscriptDisplay
-                transcript={
-                  transcript ||
-                  'No transcript data was recorded for this meeting.'
-                }
-                isListening={false}
-              />
+
+            <div className="h-[60vh] bg-zinc-950 border border-zinc-900 rounded-md overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 p-4 space-y-3">
+              {segments.length > 0 ? (
+                segments.map((segment) => (
+                  <div
+                    key={segment.id}
+                    className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+                  >
+                    <div className="mb-2 text-[11px] uppercase tracking-widest text-zinc-500">
+                      {formatTime(segment.start_time)} →{' '}
+                      {formatTime(segment.end_time)}
+                    </div>
+                    <div className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap">
+                      {segment.content}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-zinc-500 text-sm">
+                    No transcript data was recorded for this meeting.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right Column: Insights */}
-          <div>
-            {/* Important */}
-            {flags.length > 0 && (
-              <div>
-                <h2 className="text-sm uppercase tracking-widest text-amber-500 font-semibold mb-10 border-b border-zinc-900 pb-2">
-                  Important insights ({flags.length})
-                </h2>
-                <div className="space-y-3 h-[600px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-800">
-                  {flags.map((insight, idx) => {
-                    const isResolved =
-                      insight.status === 'accepted' ||
-                      insight.status === 'rejected'
-                    const titleAddendum = isResolved
-                      ? ` (${insight.status?.toUpperCase()})`
-                      : ''
-                    return (
-                      <InsightCard
-                        key={insight.id ?? idx}
-                        type="COMMITMENT"
-                        title={'COMMITMENT' + titleAddendum}
-                        description={insight.summary}
-                        timestamp={`${formatTime(insight.start_ts)} → ${formatTime(insight.end_ts)}`}
-                        isFlagged={false}
-                      />
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+          <div className="space-y-8">
+            <div>
+              <h2 className="text-sm uppercase tracking-widest text-amber-500 font-semibold mb-4 border-b border-zinc-900 pb-2">
+                Important insights ({importantInsights.length})
+              </h2>
 
-            {/* General */}
-            {updates.length > 0 && (
-              <div>
-                <h2 className="text-sm uppercase tracking-widest text-blue-500 font-semibold mb-4 mt-10 border-b border-zinc-900 pb-2">
-                  General ({updates.length})
-                </h2>
-                <div className="space-y-8 h-[600px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-800">
-                  {updates.map((insight, idx) => {
-                    return (
-                      <InsightCard
-                        key={insight.id ?? idx}
-                        type="UPDATE"
-                        title="UPDATE"
-                        description={insight.summary}
-                        timestamp={`${formatTime(insight.start_ts)} → ${formatTime(insight.end_ts)}`}
-                        isFlagged={false}
-                      />
-                    )
-                  })}
+              {importantInsights.length > 0 ? (
+                <div className="space-y-3 h-[280px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-800">
+                  {importantInsights.map((insight, idx) => (
+                    <InsightCard key={insight.id ?? idx} insight={insight} />
+                  ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-zinc-500 text-sm">No important insights.</p>
+              )}
+            </div>
+
+            <div>
+              <h2 className="text-sm uppercase tracking-widest text-blue-500 font-semibold mb-4 border-b border-zinc-900 pb-2">
+                General ({generalInsights.length})
+              </h2>
+
+              {generalInsights.length > 0 ? (
+                <div className="space-y-3 h-[280px] overflow-y-auto pr-2 pb-4 scrollbar-thin scrollbar-thumb-zinc-800">
+                  {generalInsights.map((insight, idx) => (
+                    <InsightCard key={insight.id ?? idx} insight={insight} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-zinc-500 text-sm">No general insights.</p>
+              )}
+            </div>
 
             {insights.length === 0 && (
-              <div className="flex flex-col items-center justify-center p-8 bg-zinc-950/50 rounded-md border border-zinc-800/50 border-dashed scrollbar-thin">
+              <div className="flex flex-col items-center justify-center p-8 bg-zinc-950/50 rounded-md border border-zinc-800/50 border-dashed">
                 <p className="text-zinc-500 text-sm">
                   No insights were detected.
                 </p>
